@@ -139,8 +139,10 @@ export default function WebPanel({
             ) : null}
             {/* Open externally link */}
             <div className={`absolute bottom-0 left-0 right-0 bg-white/90 backdrop-blur-sm border-t border-gray-200 px-4 py-2 flex items-center justify-between ${iframeError ? 'top-0 items-center justify-center flex-col gap-3 border-t-0' : ''}`}>
-              {iframeError && (
+              {iframeError ? (
                 <p className="text-sm text-gray-500 text-center">This website blocks embedded previews.</p>
+              ) : (
+                <span className="text-xs text-gray-400">Some sites won't load here due to security restrictions</span>
               )}
               <a
                 href={resolvedUrls[activeTab]}
