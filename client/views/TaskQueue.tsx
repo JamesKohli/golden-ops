@@ -188,6 +188,7 @@ export default function TaskQueue() {
     if (!confirm('Reset the demo? This wipes all progress and reloads the sample data.')) return;
     setResetting(true);
     await fetch('/api/reset', { method: 'POST' });
+    sessionStorage.removeItem('welcome_dismissed');
     window.location.href = '/';
   };
 
