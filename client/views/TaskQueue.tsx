@@ -17,7 +17,7 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <h2 className="text-lg font-bold text-white">Welcome to Golden Ops</h2>
+            <h2 className="text-lg font-bold text-white">Welcome to James's Golden Ops Demo</h2>
           </div>
           <p className="text-indigo-100 text-sm leading-relaxed">
             A configurable tool for building golden evaluation datasets. Human operators verify business data against live web sources, producing structured records to benchmark AI agents.
