@@ -1,6 +1,101 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import type { BatchWithStats, TemplateRow, TaskRow } from '../../shared/types.js';
+
+function WelcomeModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="bg-white rounded-2xl shadow-xl max-w-lg w-full overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="bg-indigo-600 px-6 py-5">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
+              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h2 className="text-lg font-bold text-white">Welcome to Golden Ops</h2>
+          </div>
+          <p className="text-indigo-100 text-sm leading-relaxed">
+            A configurable tool for building golden evaluation datasets. Human operators verify business data against live web sources, producing structured records to benchmark AI agents.
+          </p>
+        </div>
+
+        {/* Things to try */}
+        <div className="px-6 py-5">
+          <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-3">Things to try</h3>
+          <div className="space-y-3">
+            {[
+              {
+                icon: (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                  </svg>
+                ),
+                color: 'bg-indigo-100 text-indigo-600',
+                title: 'Walk through a task',
+                desc: 'Click "Get Next Task" to verify a Brooklyn restaurant\'s phone number — you\'ll see Google Maps and the business website side by side.',
+              },
+              {
+                icon: (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  </svg>
+                ),
+                color: 'bg-amber-100 text-amber-600',
+                title: 'Draw evidence boxes',
+                desc: 'On the "phones found" step, click "Draw box on web panel" to highlight where you found a phone number on the website.',
+              },
+              {
+                icon: (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                ),
+                color: 'bg-purple-100 text-purple-600',
+                title: 'Modify the workflow with AI',
+                desc: 'Open the Workflow Designer and ask Claude to add or change steps — e.g., "Add a step asking if the business appears permanently closed."',
+              },
+              {
+                icon: (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                ),
+                color: 'bg-emerald-100 text-emerald-600',
+                title: 'Export golden records',
+                desc: 'Complete a task, then click "Export JSONL" on the batch card to download structured evaluation data.',
+              },
+            ].map((item, i) => (
+              <div key={i} className="flex gap-3">
+                <div className={`w-8 h-8 rounded-lg ${item.color} flex items-center justify-center shrink-0`}>
+                  {item.icon}
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-900">{item.title}</p>
+                  <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{item.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 pb-5">
+          <button
+            onClick={onClose}
+            className="w-full py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+          >
+            Get Started
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface TaskListItem extends TaskRow {
   input: Record<string, any>;
@@ -15,6 +110,7 @@ export default function TaskQueue() {
   const [loading, setLoading] = useState(true);
   const [claiming, setClaiming] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [uploadTemplateId, setUploadTemplateId] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
@@ -42,6 +138,14 @@ export default function TaskQueue() {
   };
 
   useEffect(() => { fetchData(); }, []);
+
+  // Show welcome modal on fresh state
+  useEffect(() => {
+    if (!loading && myTasks.length === 0 && batches.length > 0 && !justCompleted) {
+      const dismissed = sessionStorage.getItem('welcome_dismissed');
+      if (!dismissed) setShowWelcome(true);
+    }
+  }, [loading, myTasks.length, batches.length]);
 
   const handleClaim = async () => {
     setClaiming(true);
@@ -113,6 +217,13 @@ export default function TaskQueue() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {showWelcome && (
+        <WelcomeModal onClose={() => {
+          setShowWelcome(false);
+          sessionStorage.setItem('welcome_dismissed', '1');
+        }} />
+      )}
+
       {/* Header */}
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
