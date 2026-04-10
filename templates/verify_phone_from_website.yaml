@@ -1,0 +1,80 @@
+name: verify_phone_from_website
+version: 1
+description: Verify a business's phone number by comparing its Google Maps listing to its website
+
+data_sources:
+  - id: maps_view
+    type: web_embed
+    url_template: "https://www.google.com/maps/embed/v1/place?q={{input.business_name}}+{{input.address}}&key=GOOGLE_MAPS_API_KEY"
+  - id: biz_website
+    type: web_embed
+    url_template: "{{website_url}}"
+
+panels:
+  left:
+    - source: maps_view
+      label: "Google Maps"
+    - source: biz_website
+      label: "Business Website"
+  right: steps
+
+steps:
+  - id: website_url
+    instruction: "The business website has been auto-detected from Google Maps. Check the Business Website tab on the left to confirm it loaded correctly. If the URL is wrong, correct it below."
+    input_type: url
+    output_key: website_url
+    prefill_from: input.website_url
+
+  - id: website_status
+    instruction: "Switch to the Business Website tab on the left. Is the website accessible?"
+    input_type: enum [accessible, down, not_a_website, no_website_listed]
+    output_key: website_status
+
+  - id: phones_found
+    instruction: "Look at the business website on the left. List every phone number you can find on the page. Use the box-draw tool to highlight where you found them."
+    input_type: string[]
+    output_key: phones_found
+    evidence: screenshot
+
+  - id: match_assessment
+    instruction: >
+      Compare the phone from Google Maps with what you found on the website:
+
+      Google Maps phone: {{input.google_phone}}
+      Website phone(s): {{phones_found}}
+
+      Do they match?
+    input_type: enum [exact_match, format_differs_same_number, different_number, no_phone_on_site]
+    output_key: match_status
+
+  - id: recommended_phone
+    instruction: "Based on your research, what should the correct phone number be for this business? This will be used as the golden record."
+    input_type: phone
+    prefill_from: phones_found[0]
+    output_key: recommended_phone
+
+  - id: confidence
+    instruction: "How confident are you in your recommended phone number?"
+    input_type: enum [high, medium, low]
+    output_key: confidence
+
+  - id: notes
+    instruction: "Anything else worth noting? For example: business appears closed, website is for a different location, multiple locations listed, etc."
+    input_type: text
+    required: false
+    output_key: notes
+
+qa:
+  dual_rate_percentage: 20
+  agreement_metric: exact
+  disagreement_routing: reviewer
+  calibration_tasks: 5
+
+output_schema:
+  place_id: "{{input.place_id}}"
+  source_url: "{{website_url}}"
+  listed_phone: "{{input.google_phone}}"
+  match_status: "{{match_status}}"
+  recommended_phone: "{{recommended_phone}}"
+  confidence: "{{confidence}}"
+  notes: "{{notes}}"

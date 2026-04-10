@@ -1,0 +1,8 @@
+node_modules/
+dist/
+golden-ops.db
+golden-ops.db-shm
+golden-ops.db-wal
+evidence/
+.DS_Store
+*.env
