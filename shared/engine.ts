@@ -29,6 +29,7 @@ export function parseTemplate(yamlString: string): TemplateDefinition {
       evidence: s.evidence,
       prefill_from: s.prefill_from,
       required: s.required !== false, // default true
+      group: s.group,
     })),
     qa: raw.qa,
     output_schema: raw.output_schema,

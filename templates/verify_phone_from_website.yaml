@@ -24,17 +24,20 @@ steps:
     input_type: url
     output_key: website_url
     prefill_from: input.website_url
+    group: website
 
   - id: website_status
-    instruction: "Switch to the Business Website tab on the left. Is the website accessible?"
+    instruction: "Is the website accessible?"
     input_type: enum [accessible, down, not_a_website, no_website_listed]
     output_key: website_status
+    group: website
 
   - id: phones_found
     instruction: "Look at the business website on the left. List every phone number you can find on the page. Use the box-draw tool to highlight where you found them."
     input_type: string[]
     output_key: phones_found
     evidence: screenshot
+    group: phones
 
   - id: match_assessment
     instruction: >
@@ -46,23 +49,27 @@ steps:
       Do they match?
     input_type: enum [exact_match, format_differs_same_number, different_number, no_phone_on_site]
     output_key: match_status
+    group: assessment
 
   - id: recommended_phone
-    instruction: "Based on your research, what should the correct phone number be for this business? This will be used as the golden record."
+    instruction: "What should the correct phone number be for this business?"
     input_type: phone
     prefill_from: phones_found[0]
     output_key: recommended_phone
+    group: assessment
 
   - id: confidence
-    instruction: "How confident are you in your recommended phone number?"
+    instruction: "How confident are you?"
     input_type: enum [high, medium, low]
     output_key: confidence
+    group: assessment
 
   - id: notes
-    instruction: "Anything else worth noting? For example: business appears closed, website is for a different location, multiple locations listed, etc."
+    instruction: "Anything else worth noting? (e.g. business appears closed, website is for a different location)"
     input_type: text
     required: false
     output_key: notes
+    group: assessment
 
 qa:
   dual_rate_percentage: 20

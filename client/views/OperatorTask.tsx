@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import type { TaskWithDetails, TemplateStep } from '../../shared/types.js';
 import { buildStepContext, parseInputType, resolvePrefill } from '../../shared/engine.js';
@@ -6,15 +6,41 @@ import StepRenderer from '../components/StepRenderer';
 import WebPanel from '../components/WebPanel';
 import type { BoxData } from '../components/EvidenceCapture';
 
+/** Group steps into screens by their `group` field. Steps without a group get their own screen. */
+function groupSteps(steps: TemplateStep[]): TemplateStep[][] {
+  const screens: TemplateStep[][] = [];
+  let currentGroup: string | null = null;
+  let currentScreen: TemplateStep[] = [];
+
+  for (const step of steps) {
+    if (step.group) {
+      if (step.group === currentGroup) {
+        currentScreen.push(step);
+      } else {
+        if (currentScreen.length) screens.push(currentScreen);
+        currentGroup = step.group;
+        currentScreen = [step];
+      }
+    } else {
+      if (currentScreen.length) screens.push(currentScreen);
+      currentGroup = null;
+      currentScreen = [];
+      screens.push([step]);
+    }
+  }
+  if (currentScreen.length) screens.push(currentScreen);
+  return screens;
+}
+
 export default function OperatorTask() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [task, setTask] = useState<TaskWithDetails | null>(null);
-  const [currentStep, setCurrentStep] = useState(0);
+  const [currentScreen, setCurrentScreen] = useState(0);
   const [responses, setResponses] = useState<Record<string, any>>({});
   const [evidence, setEvidence] = useState<Record<string, string>>({});
   const [boxes, setBoxes] = useState<Record<string, BoxData>>({});
-  const [drawMode, setDrawMode] = useState(false);
+  const [drawModeStepId, setDrawModeStepId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,9 +50,7 @@ export default function OperatorTask() {
       .then((r) => r.json())
       .then((data) => {
         setTask(data);
-        // Seed responses from existing saved responses
         const initialResponses: Record<string, any> = { ...(data.responses || {}) };
-        // Pre-populate from prefill_from values so data sources resolve immediately
         if (data.template?.steps && data.input) {
           const ctx = { input: data.input, ...initialResponses };
           for (const s of data.template.steps) {
@@ -47,74 +71,75 @@ export default function OperatorTask() {
       });
   }, [id]);
 
-  const steps = task?.template.steps ?? [];
-  const step = steps[currentStep];
-  const totalSteps = steps.length;
+  const allSteps = task?.template.steps ?? [];
+  const screens = useMemo(() => groupSteps(allSteps), [allSteps]);
+  const screenSteps = screens[currentScreen] ?? [];
+  const totalScreens = screens.length;
 
   const context = buildStepContext(
-    // Map responses by output_key
     Object.fromEntries(
-      steps.map((s) => [s.output_key, responses[s.id]])
+      allSteps.map((s) => [s.output_key, responses[s.id]])
         .filter(([, v]) => v !== undefined)
     ),
     task?.input ?? {}
   );
 
-  const saveStep = useCallback(async (stepDef: TemplateStep, value: any) => {
+  const saveSteps = useCallback(async (steps: TemplateStep[]) => {
     if (!task) return;
-    try {
-      await fetch(`/api/tasks/${task.id}/steps/${stepDef.id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ value }),
-      });
-    } catch (e) {
-      console.error('Failed to save step', e);
+    for (const step of steps) {
+      const value = responses[step.id];
+      if (value !== undefined && value !== null && value !== '') {
+        try {
+          await fetch(`/api/tasks/${task.id}/steps/${step.id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ value }),
+          });
+        } catch (e) {
+          console.error('Failed to save step', e);
+        }
+      }
     }
-  }, [task]);
+  }, [task, responses]);
 
-  const handleNext = async () => {
-    if (!step || !task) return;
-    const value = responses[step.id];
-
-    // Validate
-    if (step.required !== false) {
+  const validateScreen = (): string | null => {
+    for (const step of screenSteps) {
+      if (step.required === false) continue;
+      const value = responses[step.id];
       if (value === undefined || value === null || value === '') {
-        setError('This field is required');
-        return;
+        return `"${step.output_key.replace(/_/g, ' ')}" is required`;
       }
       if (Array.isArray(value) && value.every((v: string) => !v.trim())) {
-        setError('Please add at least one item');
-        return;
+        return `Please add at least one item for "${step.output_key.replace(/_/g, ' ')}"`;
       }
     }
+    return null;
+  };
 
+  const handleNext = async () => {
+    const err = validateScreen();
+    if (err) { setError(err); return; }
     setError(null);
-    await saveStep(step, value);
-
-    if (currentStep < totalSteps - 1) {
-      setCurrentStep(currentStep + 1);
+    await saveSteps(screenSteps);
+    if (currentScreen < totalScreens - 1) {
+      setCurrentScreen(currentScreen + 1);
     }
   };
 
   const handleBack = () => {
-    if (currentStep > 0) {
+    if (currentScreen > 0) {
       setError(null);
-      setCurrentStep(currentStep - 1);
+      setCurrentScreen(currentScreen - 1);
     }
   };
 
   const handleComplete = async () => {
-    if (!task || !step) return;
+    if (!task) return;
+    const err = validateScreen();
+    if (err) { setError(err); return; }
     setSubmitting(true);
     setError(null);
-
-    // Save current step first
-    const value = responses[step.id];
-    if (value !== undefined && value !== null && value !== '') {
-      await saveStep(step, value);
-    }
-
+    await saveSteps(screenSteps);
     try {
       const res = await fetch(`/api/tasks/${task.id}/complete`, { method: 'POST' });
       const data = await res.json();
@@ -150,7 +175,7 @@ export default function OperatorTask() {
     );
   }
 
-  if (!task || !step) {
+  if (!task || screenSteps.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -161,12 +186,13 @@ export default function OperatorTask() {
     );
   }
 
-  const isLastStep = currentStep === totalSteps - 1;
-  const stepValue = responses[step.id];
-  const isStepValid = step.required === false || (
-    stepValue !== undefined && stepValue !== null && stepValue !== '' &&
-    !(Array.isArray(stepValue) && stepValue.every((v: string) => !v.trim()))
-  );
+  const isLastScreen = currentScreen === totalScreens - 1;
+  const isScreenValid = validateScreen() === null;
+
+  // Compute completed steps count for progress
+  const stepsBeforeThisScreen = screens.slice(0, currentScreen).reduce((n, s) => n + s.length, 0);
+  const stepsIncludingThisScreen = stepsBeforeThisScreen + screenSteps.length;
+  const progressPct = (stepsIncludingThisScreen / allSteps.length) * 100;
 
   return (
     <div className="h-screen flex flex-col bg-gray-50">
@@ -183,7 +209,7 @@ export default function OperatorTask() {
               {task.input?.business_name || task.template.name.replace(/_/g, ' ')}
             </h1>
             <p className="text-xs text-gray-500">
-              {task.input?.address ? `${task.input.address}` : `Task ${task.id.slice(0, 8)}`}
+              {task.input?.address || `Task ${task.id.slice(0, 8)}`}
             </p>
           </div>
         </div>
@@ -199,8 +225,8 @@ export default function OperatorTask() {
             Flag issue
           </button>
           <div className="text-sm text-gray-500">
-            <span className="font-semibold text-gray-900">{currentStep + 1}</span>
-            <span> / {totalSteps}</span>
+            <span className="font-semibold text-gray-900">{currentScreen + 1}</span>
+            <span> / {totalScreens}</span>
           </div>
         </div>
       </header>
@@ -209,7 +235,7 @@ export default function OperatorTask() {
       <div className="h-1 bg-gray-100 shrink-0">
         <div
           className="h-full bg-indigo-600 transition-all duration-300"
-          style={{ width: `${((currentStep + 1) / totalSteps) * 100}%` }}
+          style={{ width: `${progressPct}%` }}
         />
       </div>
 
@@ -221,48 +247,53 @@ export default function OperatorTask() {
             panels={task.template.panels.left}
             dataSources={task.template.data_sources}
             context={context}
-            drawMode={drawMode}
+            drawMode={!!drawModeStepId}
             onBoxDrawn={(box) => {
-              setBoxes({ ...boxes, [step.id]: box });
-              setDrawMode(false);
+              if (drawModeStepId) setBoxes({ ...boxes, [drawModeStepId]: box });
+              setDrawModeStepId(null);
             }}
-            onCancelDraw={() => setDrawMode(false)}
-            currentBox={boxes[step.id] || null}
+            onCancelDraw={() => setDrawModeStepId(null)}
+            currentBox={(drawModeStepId && boxes[drawModeStepId]) || null}
           />
         </div>
 
         {/* Right Panel - Step Flow */}
         <div className="w-[40%] border-l border-gray-200 bg-white flex flex-col">
-          <div className="flex-1 overflow-y-auto p-6">
-            {/* Step Header */}
-            <div className="mb-5 flex items-center gap-2">
-              <span className="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-indigo-600 text-white">
-                {currentStep + 1}
-              </span>
-              <span className="text-sm font-medium text-gray-500">
-                {step.output_key.replace(/_/g, ' ')}
-              </span>
-              {step.required === false && (
-                <span className="text-xs text-gray-400 italic">optional</span>
-              )}
-            </div>
+          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            {screenSteps.map((step, idx) => (
+              <div key={step.id}>
+                {idx > 0 && <hr className="border-gray-100 mb-6" />}
 
-            {/* Step Content */}
-            <StepRenderer
-              step={step}
-              value={responses[step.id]}
-              onChange={(val) => setResponses({ ...responses, [step.id]: val })}
-              context={context}
-              taskId={task.id}
-              evidencePath={evidence[step.id] || null}
-              onEvidenceUploaded={(path) => setEvidence({ ...evidence, [step.id]: path })}
-              onStartBoxDraw={() => setDrawMode(true)}
-              boxData={boxes[step.id] || null}
-            />
+                {/* Step Header */}
+                <div className="mb-3 flex items-center gap-2">
+                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-indigo-600 text-white">
+                    {stepsBeforeThisScreen + idx + 1}
+                  </span>
+                  <span className="text-sm font-medium text-gray-500">
+                    {step.output_key.replace(/_/g, ' ')}
+                  </span>
+                  {step.required === false && (
+                    <span className="text-xs text-gray-400 italic">optional</span>
+                  )}
+                </div>
+
+                <StepRenderer
+                  step={step}
+                  value={responses[step.id]}
+                  onChange={(val) => setResponses({ ...responses, [step.id]: val })}
+                  context={context}
+                  taskId={task.id}
+                  evidencePath={evidence[step.id] || null}
+                  onEvidenceUploaded={(path) => setEvidence({ ...evidence, [step.id]: path })}
+                  onStartBoxDraw={() => setDrawModeStepId(step.id)}
+                  boxData={boxes[step.id] || null}
+                />
+              </div>
+            ))}
 
             {/* Error */}
             {error && (
-              <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
                 {error}
               </div>
             )}
@@ -272,16 +303,16 @@ export default function OperatorTask() {
           <div className="border-t border-gray-200 px-6 py-4 flex items-center justify-between shrink-0">
             <button
               onClick={handleBack}
-              disabled={currentStep === 0}
+              disabled={currentScreen === 0}
               className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               Back
             </button>
             <div className="flex gap-2">
-              {isLastStep ? (
+              {isLastScreen ? (
                 <button
                   onClick={handleComplete}
-                  disabled={submitting || (!isStepValid && step.required !== false)}
+                  disabled={submitting}
                   className="px-6 py-2.5 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
                 >
                   {submitting ? 'Submitting...' : 'Complete Task'}
@@ -289,7 +320,6 @@ export default function OperatorTask() {
               ) : (
                 <button
                   onClick={handleNext}
-                  disabled={!isStepValid}
                   className="px-6 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
                 >
                   Next

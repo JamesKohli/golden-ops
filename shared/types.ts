@@ -24,6 +24,7 @@ export interface TemplateStep {
   evidence?: 'screenshot';
   prefill_from?: string;
   required?: boolean; // defaults to true
+  group?: string;
 }
 
 export interface QAConfig {
