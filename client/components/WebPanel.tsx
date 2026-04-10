@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { resolveVariable } from '../../shared/engine.js';
 import type { DataSource, PanelSourceRef } from '../../shared/types.js';
 import type { BoxData } from './EvidenceCapture';
@@ -39,7 +39,8 @@ export default function WebPanel({
       if (!ds) return '';
       const url = resolveVariable(ds.url_template, context);
       if (!url || url.includes('{{')) return '';
-      return url;
+      // Upgrade http to https to avoid mixed content blocking in production
+      return url.replace(/^http:\/\//, 'https://');
     });
   }, [panels, sourceMap, context]);
 
@@ -85,6 +86,11 @@ export default function WebPanel({
     }
   };
 
+  const [iframeError, setIframeError] = useState<string | null>(null);
+
+  // Reset error when URL changes
+  useEffect(() => { setIframeError(null); }, [resolvedUrls[activeTab]]);
+
   const displayBox = liveBox || (currentBox && !drawMode ? currentBox : null);
 
   return (
@@ -120,14 +126,34 @@ export default function WebPanel({
       <div className="flex-1 relative">
         {resolvedUrls[activeTab] ? (
           <>
-            <iframe
-              key={resolvedUrls[activeTab]}
-              src={resolvedUrls[activeTab]}
-              className="absolute inset-0 w-full h-full border-0"
-              sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
-              referrerPolicy="no-referrer"
-              allowFullScreen
-            />
+            {!iframeError ? (
+              <iframe
+                key={resolvedUrls[activeTab]}
+                src={resolvedUrls[activeTab]}
+                className="absolute inset-0 w-full h-full border-0"
+                sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+                referrerPolicy="no-referrer"
+                allowFullScreen
+                onError={() => setIframeError('blocked')}
+              />
+            ) : null}
+            {/* Open externally link */}
+            <div className={`absolute bottom-0 left-0 right-0 bg-white/90 backdrop-blur-sm border-t border-gray-200 px-4 py-2 flex items-center justify-between ${iframeError ? 'top-0 items-center justify-center flex-col gap-3 border-t-0' : ''}`}>
+              {iframeError && (
+                <p className="text-sm text-gray-500 text-center">This website blocks embedded previews.</p>
+              )}
+              <a
+                href={resolvedUrls[activeTab]}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1"
+              >
+                Open in new tab
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+              </a>
+            </div>
             {/* Draw overlay */}
             {drawMode && (
               <div
