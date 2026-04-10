@@ -10,7 +10,7 @@ interface WebPanelProps {
   drawMode: boolean;
   onBoxDrawn: (box: BoxData) => void;
   onCancelDraw: () => void;
-  currentBox: BoxData | null;
+  boxes: BoxData[];
 }
 
 export default function WebPanel({
@@ -20,7 +20,7 @@ export default function WebPanel({
   drawMode,
   onBoxDrawn,
   onCancelDraw,
-  currentBox,
+  boxes: savedBoxes,
 }: WebPanelProps) {
   const [activeTab, setActiveTab] = useState(0);
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -91,7 +91,8 @@ export default function WebPanel({
   // Reset error when URL changes
   useEffect(() => { setIframeError(null); }, [resolvedUrls[activeTab]]);
 
-  const displayBox = liveBox || (currentBox && !drawMode ? currentBox : null);
+  // Show the in-progress draw box, or all saved boxes
+  const displayBoxes: BoxData[] = liveBox ? [liveBox as BoxData] : (!drawMode ? savedBoxes : []);
 
   return (
     <div className="flex flex-col h-full bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
@@ -168,18 +169,20 @@ export default function WebPanel({
               />
             )}
             {/* Persistent box display + draw-in-progress box */}
-            {displayBox && displayBox.w > 0 && (
+            {displayBoxes.map((box, i) => box.w > 0 && (
               <div
+                key={i}
                 className="absolute pointer-events-none border-2 border-indigo-500 rounded-sm"
                 style={{
-                  left: displayBox.x,
-                  top: displayBox.y + (drawMode ? 0 : panels.length > 0 ? 0 : 0),
-                  width: displayBox.w,
-                  height: displayBox.h,
-                  boxShadow: '0 0 0 9999px rgba(0,0,0,0.25)',
+                  left: box.x,
+                  top: box.y,
+                  width: box.w,
+                  height: box.h,
+                  boxShadow: displayBoxes.length === 1 ? '0 0 0 9999px rgba(0,0,0,0.25)' : undefined,
+                  backgroundColor: displayBoxes.length > 1 ? 'rgba(99,102,241,0.1)' : undefined,
                 }}
               />
-            )}
+            ))}
           </>
         ) : (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-50">

@@ -253,7 +253,7 @@ export default function OperatorTask() {
               setDrawModeStepId(null);
             }}
             onCancelDraw={() => setDrawModeStepId(null)}
-            currentBox={(drawModeStepId && boxes[drawModeStepId]) || null}
+            boxes={screenSteps.map(s => boxes[s.id]).filter(Boolean)}
           />
         </div>
 
