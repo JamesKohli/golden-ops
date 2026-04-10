@@ -40,11 +40,12 @@ export function parseTemplate(yamlString: string): TemplateDefinition {
  * Supports dot notation (input.place_id) and simple keys (website_url).
  */
 export function resolveVariable(template: string, context: Record<string, any>, envVars?: Record<string, string>): string {
+  const isUrl = template.includes('://');
   let result = template.replace(/\{\{([\w.\[\]]+)\}\}/g, (_match, path: string) => {
     const value = resolvePath(context, path);
     if (value === undefined || value === null) return '';
-    if (Array.isArray(value)) return value.join(', ');
-    return String(value);
+    const str = Array.isArray(value) ? value.join(', ') : String(value);
+    return isUrl ? encodeURIComponent(str) : str;
   });
   // Replace env var placeholders like GOOGLE_MAPS_API_KEY
   if (envVars) {
