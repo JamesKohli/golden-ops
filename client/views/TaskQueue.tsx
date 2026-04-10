@@ -139,13 +139,13 @@ export default function TaskQueue() {
 
   useEffect(() => { fetchData(); }, []);
 
-  // Show welcome modal on fresh state
+  // Show welcome modal on first visit
   useEffect(() => {
-    if (!loading && myTasks.length === 0 && batches.length > 0 && !justCompleted) {
+    if (!loading && !justCompleted) {
       const dismissed = sessionStorage.getItem('welcome_dismissed');
       if (!dismissed) setShowWelcome(true);
     }
-  }, [loading, myTasks.length, batches.length]);
+  }, [loading]);
 
   const handleClaim = async () => {
     setClaiming(true);
